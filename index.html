@@ -64,10 +64,14 @@
     <label for="proxy">CORS Proxy (bắt buộc nếu API không cho browser gọi)</label>
     <div class="row">
       <select id="proxy">
+        <option value="auto">Auto (direct → lần lượt các proxy)</option>
         <option value="none">Không dùng (direct)</option>
-        <option value="corsproxy">corsproxy.io</option>
+        <option value="corsproxy">corsproxy.io (cần key)</option>
         <option value="allorigins">allorigins.win</option>
+        <option value="codetabs">api.codetabs.com</option>
         <option value="corsis">cors.isomorphic-git.org</option>
+        <option value="corsworkers">test.cors.workers.dev</option>
+        <option value="thingproxy">thingproxy.freeboard.io</option>
         <option value="custom">Custom…</option>
       </select>
     </div>

@@ -9,7 +9,7 @@ const S = {
   type: 'openai-chat',
   baseUrl: '',
   apiKey: '',
-  proxy: 'none',
+  proxy: 'auto',
   proxyCustom: '',
   models: [],          // [{id, raw, source}]
   model: '',
@@ -118,20 +118,31 @@ function baseFor(type) {
 }
 
 /** Build URL cuối cùng, kèm proxy nếu chọn. */
-function buildUrl(target) {
-  switch (S.proxy) {
-    case 'corsproxy': return 'https://corsproxy.io/?url=' + encodeURIComponent(target);
-    case 'allorigins': return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target);
-    case 'corsis': return 'https://cors.isomorphic-git.org/' + target;
-    case 'custom': {
-      const tpl = (S.proxyCustom || '').trim();
-      if (!tpl) return target;
-      return tpl.includes('{url}')
-        ? tpl.replace('{url}', encodeURIComponent(target))
-        : tpl + encodeURIComponent(target);
-    }
-    default: return target;
+const PROXIES = {
+  corsproxy: (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+  allorigins: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  corsis: (u) => 'https://cors.isomorphic-git.org/' + u,
+  codetabs: (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  thingproxy: (u) => 'https://thingproxy.freeboard.io/fetch/' + u,
+  corsworkers: (u) => 'https://test.cors.workers.dev/?' + u,
+  custom: (u) => {
+    const tpl = (S.proxyCustom || '').trim();
+    if (!tpl) return u;
+    return tpl.includes('{url}') ? tpl.replace('{url}', encodeURIComponent(u)) : tpl + encodeURIComponent(u);
+  },
+};
+
+/** Danh sách proxy sẽ thử theo thứ tự. 'auto' = thử direct rồi lần lượt các proxy công khai. */
+function proxyChain() {
+  if (S.proxy === 'auto') {
+    return ['none', 'corsproxy', 'allorigins', 'codetabs', 'corsis', 'corsworkers', 'thingproxy'];
   }
+  return [S.proxy];
+}
+
+function buildUrl(target, proxyKey = S.proxy) {
+  const fn = PROXIES[proxyKey];
+  return fn ? fn(target) : target;
 }
 
 function headersFor(type, extra = {}) {
@@ -269,21 +280,51 @@ function tokensFrom(usage, type) {
 }
 
 /* ─────────────────────────── FETCH WRAPPER ─────────────────────── */
-async function apiFetch(url, opts = {}) {
-  const finalUrl = buildUrl(url);
-  const started = performance.now();
-  let res;
+const PROXY_TIMEOUT = 8000;
+
+/** fetch có timeout — proxy công khai hay treo, không được để cả UI đứng. */
+async function fetchWithTimeout(url, opts, ms) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
   try {
-    res = await fetch(finalUrl, opts);
-  } catch (e) {
-    const t = (performance.now() - started) | 0;
-    throw Object.assign(new Error(
-      `Network/CORS error sau ${fmtMs(t)}. Không tới được server — có thể do CORS, sai domain, hoặc proxy chết.\n` +
-      `Chi tiết: ${e.message}\n` +
-      `→ Thử chọn CORS Proxy ở panel 01.`
-    ), { kind: 'network', ms: t });
+    return await fetch(url, { ...opts, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
   }
-  return res;
+}
+
+async function apiFetch(url, opts = {}) {
+  const chain = proxyChain();
+  const started = performance.now();
+  const fails = [];
+
+  for (const key of chain) {
+    const finalUrl = buildUrl(url, key);
+    const t0 = performance.now();
+    try {
+      const res = await fetchWithTimeout(finalUrl, opts, chain.length > 1 ? PROXY_TIMEOUT : 60000);
+      // Proxy công khai hay trả trang lỗi HTML / JSON lạ với status lạ — coi là chết, thử tiếp.
+      const ct = res.headers.get('content-type') || '';
+      const dead = !res.ok && (res.status >= 500 || res.status === 429 || ct.includes('text/html'));
+      if (dead && chain.length > 1 && key !== chain[chain.length - 1]) {
+        fails.push(`${key}: HTTP ${res.status}`);
+        continue;
+      }
+      S.lastProxy = key;
+      return res;
+    } catch (e) {
+      const reason = e.name === 'AbortError' ? `timeout ${PROXY_TIMEOUT}ms` : e.message;
+      fails.push(`${key}: ${reason}`);
+    }
+    void t0;
+  }
+
+  const t = (performance.now() - started) | 0;
+  throw Object.assign(new Error(
+    `Network/CORS error sau ${fmtMs(t)} — không tới được server qua ${chain.length} đường.\n` +
+    fails.map((f) => '  ✗ ' + f).join('\n') + '\n' +
+    `→ Kiểm tra Base URL, hoặc chọn CORS Proxy khác / nhập proxy riêng.`
+  ), { kind: 'network', ms: t });
 }
 
 async function readErr(res) {
@@ -331,7 +372,9 @@ async function probeType(type, model) {
 
   const { status, msg } = await readErr(res);
   // 400 kiểu "model không hỗ trợ endpoint này" → endpoint sống nhưng model sai
-  const endpointAlive = status === 400 || status === 422;
+  // 400/422/4096: endpoint sống nhưng body/model không hợp (vd Gemini sai model → 404
+  // hoặc proxy kiểu Cloudflare trả 4096) — vẫn tính là "có chuẩn"
+  const endpointAlive = status === 400 || status === 422 || status === 4096;
   return { ok: false, status, msg, model: modelToUse, partial: endpointAlive };
 }
 
@@ -387,7 +430,7 @@ async function checkAll() {
     if (r.ok) setCap(t, 'yes', 'OK ' + r.status);
     else if (r.partial) setCap(t, 'maybe', r.status + ' model?');
     else if (r.status === 401 || r.status === 403) setCap(t, 'maybe', 'key?');
-    else if (r.status === 404 || r.status === 405) setCap(t, 'no', '404');
+    else if (r.status === 404 || r.status === 405) setCap(t, 'no', String(r.status));
     else if (r.status === 0) setCap(t, 'no', 'CORS');
     else setCap(t, 'no', String(r.status));
   }));
@@ -435,8 +478,14 @@ async function fetchModels() {
   const tried = [];
   const attempt = async (type) => {
     const b = baseFor(type);
-    const url = b + '/models' + (S.apiKey && type === 'gemini' ? '' : '');
-    const res = await apiFetch(url, { method: 'GET', headers: headersFor(type) });
+    const url = b + '/models';
+    let res;
+    try {
+      res = await apiFetch(url, { method: 'GET', headers: headersFor(type) });
+    } catch (e) {
+      tried.push({ type, status: 'net/CORS' });
+      return null;
+    }
     tried.push({ type, status: res.status });
     if (!res.ok) return null;
     const j = await res.json().catch(() => null);
@@ -463,7 +512,8 @@ async function fetchModels() {
 
   if (!list || !list.length) {
     $('#connState').className = 'hint bad';
-    $('#connState').textContent = '✘ Không lấy được model list (' + tried.map((t) => t.status).join('/') + '). Nhập tay model id bên phải.';
+    $('#connState').textContent = '✘ Không lấy được model list (' + tried.map((t) => t.type + ':' + t.status).join(' · ') + '). Nhập tay model id bên phải.';
+    out('Fetch model thất bại\n' + tried.map((t) => `  ${TYPES[t.type].label.padEnd(18)} ${t.status}`).join('\n'), 'e');
     toast('Fetch model thất bại', 'bad');
     return;
   }
@@ -761,6 +811,7 @@ function loadState() {
   if (d.apiKey) { $('#apiKey').value = d.apiKey; S.apiKey = d.apiKey; }
   if (d.remember) $('#remember').checked = true;
   if (d.proxy) { $('#proxy').value = d.proxy; S.proxy = d.proxy; }
+  else { $('#proxy').value = 'auto'; S.proxy = 'auto'; }
   if (d.proxyCustom) { $('#proxyCustom').value = d.proxyCustom; S.proxyCustom = d.proxyCustom; }
   if (d.proxy === 'custom') $('#proxyCustom').classList.remove('hidden');
   if (d.type && TYPES[d.type]) selectType(d.type);

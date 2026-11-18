@@ -39,11 +39,16 @@ Base URL chỉ cần gốc (`https://api.openai.com/v1`); dán kèm path endpoin
 
 ## CORS
 
-Trình duyệt chặn request cross-origin nếu server không trả header CORS. Nếu gặp lỗi network, chọn một proxy trong panel 01:
+Trình duyệt chặn request cross-origin nếu server không trả header CORS. Mặc định tool để **Auto**: thử direct trước, nếu chết thì lần lượt thử từng proxy công khai và dừng ở cái đầu tiên trả về thật.
 
-- `corsproxy.io` — `https://corsproxy.io/?url=<encoded>`
+Proxy có sẵn trong panel 01:
+
+- `corsproxy.io` — `https://corsproxy.io/?url=<encoded>` (bản mới cần API key)
 - `allorigins.win` — `https://api.allorigins.win/raw?url=<encoded>`
+- `api.codetabs.com` — `https://api.codetabs.com/v1/proxy?quest=<encoded>`
 - `cors.isomorphic-git.org` — `<target>`
+- `test.cors.workers.dev` — `<?<target>`
+- `thingproxy.freeboard.io` — `/fetch/<target>`
 - Custom — template với `{url}`, `{url}` sẽ được encode
 
 Anthropic có hỗ trợ chính thức cho browser qua header `anthropic-dangerous-direct-browser-access: true` (tool đã gắn sẵn).
