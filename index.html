@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Tester — OpenAI / Responses / Gemini / Anthropic</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<header>
+  <div class="logo">
+    <span class="bolt">⚡</span>
+    <div>
+      <h1>API TESTER</h1>
+      <p class="sub">openai chat · openai responses · gemini · anthropic</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button id="btn-theme" class="ghost" title="Đổi theme">◐</button>
+  </div>
+</header>
+
+<main>
+  <!-- ══════════ CỘT TRÁI: CẤU HÌNH ══════════ -->
+  <section class="panel config">
+    <h2><span class="idx">01</span> Kết nối</h2>
+
+    <label for="baseUrl">Base URL</label>
+    <div class="row">
+      <input id="baseUrl" type="text" spellcheck="false" placeholder="https://api.openai.com/v1">
+      <button id="btn-url-help" class="ghost small" title="Gợi ý base URL">?</button>
+    </div>
+    <div class="hint" id="urlHint">Dán base URL gốc, ví dụ <code>https://api.openai.com/v1</code></div>
+
+    <label for="apiKey">API Key</label>
+    <div class="row">
+      <input id="apiKey" type="password" spellcheck="false" autocomplete="off" placeholder="sk-...">
+      <button id="btn-eye" class="ghost small" title="Hiện / ẩn key">👁</button>
+    </div>
+    <div class="row tight">
+      <label class="check"><input type="checkbox" id="remember"> Lưu key trong máy (localStorage)</label>
+    </div>
+
+    <label for="apiType">Type API</label>
+    <div class="types" id="typeGroup">
+      <button class="type active" data-type="openai-chat">
+        <b>OpenAI Chat</b><small>/chat/completions</small>
+      </button>
+      <button class="type" data-type="openai-responses">
+        <b>OpenAI Responses</b><small>/responses</small>
+      </button>
+      <button class="type" data-type="gemini">
+        <b>Gemini</b><small>:generateContent</small>
+      </button>
+      <button class="type" data-type="anthropic">
+        <b>Anthropic</b><small>/messages</small>
+      </button>
+    </div>
+    <div class="hint" id="typeHint"></div>
+
+    <label for="proxy">CORS Proxy (bắt buộc nếu API không cho browser gọi)</label>
+    <div class="row">
+      <select id="proxy">
+        <option value="none">Không dùng (direct)</option>
+        <option value="corsproxy">corsproxy.io</option>
+        <option value="allorigins">allorigins.win</option>
+        <option value="corsis">cors.isomorphic-git.org</option>
+        <option value="custom">Custom…</option>
+      </select>
+    </div>
+    <input id="proxyCustom" type="text" class="hidden" spellcheck="false" placeholder="https://your-proxy/?url={url}  — {url} sẽ được encode">
+
+    <div class="row buttons">
+      <button id="btn-check" class="primary">🔍 Check chuẩn API</button>
+      <button id="btn-models" class="primary">📦 Fetch model</button>
+    </div>
+    <div class="hint" id="connState"></div>
+  </section>
+
+  <!-- ══════════ CỘT GIỮA: MODEL ══════════ -->
+  <section class="panel models">
+    <h2><span class="idx">02</span> Model</h2>
+
+    <div class="row">
+      <input id="modelSearch" type="text" spellcheck="false" placeholder="Lọc model… (vd: gpt-4o, claude, gemini)">
+      <span class="count" id="modelCount">0</span>
+    </div>
+
+    <div class="model-list" id="modelList">
+      <div class="empty">Chưa có model. Bấm <b>Fetch model</b> để lấy danh sách,<br>hoặc nhập tay bên dưới.</div>
+    </div>
+
+    <div class="manual">
+      <input id="manualModel" type="text" spellcheck="false" placeholder="Hoặc nhập tay model id…">
+      <button id="btn-use-manual" class="ghost">Dùng</button>
+    </div>
+
+    <div class="active-model" id="activeModel">
+      <span class="k">Model đang chọn</span>
+      <span class="v" id="activeModelName">—</span>
+    </div>
+
+    <div class="meta" id="metaPanel">
+      <div class="meta-row"><span>Metadata</span><em>chọn 1 model để xem</em></div>
+    </div>
+  </section>
+
+  <!-- ══════════ CỘT PHẢI: CHECK + TEST ══════════ -->
+  <section class="panel test">
+    <h2><span class="idx">03</span> Check &amp; Test</h2>
+
+    <div class="caps" id="caps">
+      <div class="cap" data-cap="openai-chat"><span class="dot"></span><b>OpenAI Chat</b><em>chưa check</em></div>
+      <div class="cap" data-cap="openai-responses"><span class="dot"></span><b>OpenAI Responses</b><em>chưa check</em></div>
+      <div class="cap" data-cap="gemini"><span class="dot"></span><b>Gemini</b><em>chưa check</em></div>
+      <div class="cap" data-cap="anthropic"><span class="dot"></span><b>Anthropic</b><em>chưa check</em></div>
+    </div>
+    <div class="hint" id="capsSummary"></div>
+
+    <label for="prompt">Prompt test</label>
+    <textarea id="prompt" rows="3">Say exactly: OK</textarea>
+
+    <div class="row">
+      <label class="check"><input type="checkbox" id="stream" checked> Stream (đo TTFT &amp; tok/s)</label>
+      <label class="check"><input type="checkbox" id="maxTokensChk" checked> max tokens</label>
+      <input id="maxTokens" type="number" value="512" min="1" class="num">
+    </div>
+
+    <div class="row buttons">
+      <button id="btn-test" class="primary big">▶ Test model</button>
+      <button id="btn-bench" class="ghost">×3 bench</button>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><span>TTFT</span><b id="s-ttft">—</b></div>
+      <div class="stat"><span>Tổng</span><b id="s-total">—</b></div>
+      <div class="stat"><span>tok/s</span><b id="s-tps">—</b></div>
+      <div class="stat"><span>Tokens</span><b id="s-tok">—</b></div>
+    </div>
+
+    <div class="status" id="status"></div>
+    <pre class="output" id="output"></pre>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<!-- Modal gợi ý URL -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>Base URL gợi ý</h3>
+    <p class="hint">Chỉ cần gốc, tool tự thêm path. Nếu URL đã có sẵn <code>/chat/completions</code> cũng được — tool sẽ tự cắt.</p>
+    <ul class="presets">
+      <li><b>OpenAI</b><code>https://api.openai.com/v1</code></li>
+      <li><b>OpenRouter</b><code>https://openrouter.ai/api/v1</code></li>
+      <li><b>DeepSeek</b><code>https://api.deepseek.com/v1</code></li>
+      <li><b>Groq</b><code>https://api.groq.com/openai/v1</code></li>
+      <li><b>Mistral</b><code>https://api.mistral.ai/v1</code></li>
+      <li><b>xAI</b><code>https://api.x.ai/v1</code></li>
+      <li><b>Together</b><code>https://api.together.xyz/v1</code></li>
+      <li><b>Fireworks</b><code>https://api.fireworks.ai/inference/v1</code></li>
+      <li><b>Gemini</b><code>https://generativelanguage.googleapis.com/v1beta</code></li>
+      <li><b>Anthropic</b><code>https://api.anthropic.com/v1</code></li>
+    </ul>
+    <button class="primary" id="btn-modal-close">Đóng</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
