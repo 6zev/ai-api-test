@@ -64,8 +64,9 @@
     <label for="proxy">CORS Proxy (bắt buộc nếu API không cho browser gọi)</label>
     <div class="row">
       <select id="proxy">
-        <option value="auto">Auto (direct → lần lượt các proxy)</option>
+        <option value="auto">Auto (direct → corsfix → …)</option>
         <option value="none">Không dùng (direct)</option>
+        <option value="corsfix">proxy.corsfix.com (free, khuyên dùng)</option>
         <option value="corsproxy">corsproxy.io (cần key)</option>
         <option value="allorigins">allorigins.win</option>
         <option value="codetabs">api.codetabs.com</option>
@@ -74,6 +75,8 @@
         <option value="thingproxy">thingproxy.freeboard.io</option>
         <option value="custom">Custom…</option>
       </select>
+      <input id="proxyKey" type="password" class="hidden" spellcheck="false" autocomplete="off" placeholder="Proxy API key (corsproxy.io free tier)">
+      <div class="hint" id="proxyHint"></div>
     </div>
     <input id="proxyCustom" type="text" class="hidden" spellcheck="false" placeholder="https://your-proxy/?url={url}  — {url} sẽ được encode">
 
