@@ -11,7 +11,6 @@ const S = {
   apiKey: '',
   proxy: 'auto',
   proxyCustom: '',
-  proxyKey: '',       // key cho corsproxy.io (free tier bắt buộc có key)
   models: [],          // [{id, raw, source}]
   model: '',
   modelMeta: null,
@@ -118,38 +117,15 @@ function baseFor(type) {
   return type === 'gemini' ? geminiBase(S.baseUrl) : normalizeBase(S.baseUrl);
 }
 
-/** Proxy: url(target) → endpoint, headers() → header bổ sung cho proxy đó. */
+/**
+ * Proxy: chỉ giữ loại FREE + KHÔNG CẦN KEY, đã test thật từ browser.
+ * corsproxy.io bỏ (free tier bắt buộc key), allorigins/codetabs/corsis/corsworkers/thingproxy
+ * bỏ (chết hoặc không trả CORS header).
+ */
 const PROXIES = {
-  // corsfix: ?sdk=1 = free tier (unlimited, 60 req/phút, 10MB/tháng chưa đăng ký domain)
   corsfix: {
     label: 'proxy.corsfix.com (free)',
     url: (u) => 'https://proxy.corsfix.com/?sdk=1&url=' + encodeURIComponent(u),
-  },
-  // corsproxy.io: free tier cần key từ console.corsproxy.io, dán vào ô "Proxy API key"
-  corsproxy: {
-    label: 'corsproxy.io (cần key)',
-    url: (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
-    headers: () => (S.proxyKey ? { 'x-corsproxy-key': S.proxyKey, Authorization: 'Bearer ' + S.proxyKey } : {}),
-  },
-  allorigins: {
-    label: 'allorigins.win',
-    url: (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-  },
-  codetabs: {
-    label: 'api.codetabs.com',
-    url: (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
-  },
-  corsis: {
-    label: 'cors.isomorphic-git.org',
-    url: (u) => 'https://cors.isomorphic-git.org/' + u,
-  },
-  corsworkers: {
-    label: 'test.cors.workers.dev',
-    url: (u) => 'https://test.cors.workers.dev/?' + u,
-  },
-  thingproxy: {
-    label: 'thingproxy.freeboard.io',
-    url: (u) => 'https://thingproxy.freeboard.io/fetch/' + u,
   },
   custom: {
     label: 'Custom',
@@ -161,23 +137,17 @@ const PROXIES = {
   },
 };
 
-/** Thứ tự thử khi ở chế độ auto. corsfix đứng đầu vì free tier không cần đăng ký. */
-const AUTO_CHAIN = ['none', 'corsfix', 'corsproxy', 'allorigins', 'codetabs', 'corsis', 'corsworkers', 'thingproxy'];
+/** Chỉ direct + corsfix. Custom chỉ dùng khi tự chọn. */
+const AUTO_CHAIN = ['none', 'corsfix'];
 
 function proxyChain() {
   if (S.proxy === 'auto') return AUTO_CHAIN;
   return [S.proxy];
 }
 
-function buildUrl(target, proxyKey = S.proxy) {
-  const p = PROXIES[proxyKey];
+function buildUrl(target, proxyName = S.proxy) {
+  const p = PROXIES[proxyName];
   return p ? p.url(target) : target;
-}
-
-/** Header mà proxy yêu cầu (vd corsproxy.io cần key). */
-function proxyHeaders(proxyKey) {
-  const p = PROXIES[proxyKey];
-  return p && p.headers ? p.headers() : {};
 }
 
 function headersFor(type, extra = {}) {
@@ -337,11 +307,7 @@ async function apiFetch(url, opts = {}) {
     const finalUrl = buildUrl(url, key);
     const t0 = performance.now();
     try {
-      const ph = proxyHeaders(key);
-      const finalOpts = Object.keys(ph).length
-        ? { ...opts, headers: { ...(opts.headers || {}), ...ph } }
-        : opts;
-      const res = await fetchWithTimeout(finalUrl, finalOpts, chain.length > 1 ? PROXY_TIMEOUT : 60000);
+      const res = await fetchWithTimeout(finalUrl, opts, chain.length > 1 ? PROXY_TIMEOUT : 60000);
       // Proxy công khai hay trả trang lỗi HTML / JSON lạ với status lạ — coi là chết, thử tiếp.
       const ct = res.headers.get('content-type') || '';
       const pxStatus = res.headers.get('x-corsfix-status') || '';
@@ -843,7 +809,6 @@ function saveState() {
   const data = {
     type: S.type, baseUrl: S.baseUrl, proxy: S.proxy, proxyCustom: S.proxyCustom,
     model: S.model, apiKey: $('#remember').checked ? S.apiKey : '',
-    proxyKey: S.proxyKey,
     remember: $('#remember').checked,
   };
   try { localStorage.setItem(LS, JSON.stringify(data)); } catch { /* ignore */ }
@@ -858,7 +823,6 @@ function loadState() {
   if (d.proxy) { $('#proxy').value = d.proxy; S.proxy = d.proxy; }
   else { $('#proxy').value = 'auto'; S.proxy = 'auto'; }
   if (d.proxyCustom) { $('#proxyCustom').value = d.proxyCustom; S.proxyCustom = d.proxyCustom; }
-  if (d.proxyKey) { $('#proxyKey').value = d.proxyKey; S.proxyKey = d.proxyKey; }
   if (d.proxy === 'custom') $('#proxyCustom').classList.remove('hidden');
   if (d.type && TYPES[d.type]) selectType(d.type);
   if (d.model) selectModel(d.model);
@@ -871,7 +835,6 @@ function init() {
   S.apiKey = ($('#apiKey').value || S.apiKey).trim();
   S.proxy = $('#proxy').value || S.proxy;
   S.proxyCustom = $('#proxyCustom').value || S.proxyCustom;
-  S.proxyKey = ($('#proxyKey').value || S.proxyKey).trim();
   $('#typeHint').textContent = TYPES[S.type].hint;
 
   $$('.type').forEach((b) => (b.onclick = () => { selectType(b.dataset.type); saveState(); }));
@@ -887,21 +850,19 @@ function init() {
   $('#proxy').onchange = (e) => {
     S.proxy = e.target.value;
     $('#proxyCustom').classList.toggle('hidden', S.proxy !== 'custom');
-    $('#proxyKey').classList.toggle('hidden', !['corsproxy', 'custom'].includes(S.proxy));
     const px = PROXIES[S.proxy];
     const hint = $('#proxyHint');
     if (hint) {
       hint.className = 'hint';
       hint.textContent = S.proxy === 'corsfix'
-        ? 'Free tier: không cần key, 60 req/phút, 10MB/tháng (đăng ký domain ở app.corsfix.com để lên 100MB).'
-        : S.proxy === 'corsproxy'
-          ? 'corsproxy.io free tier bắt buộc có key — lấy ở console.corsproxy.io rồi dán vào ô trên.'
-          : px ? 'Proxy công khai, có thể chết bất cứ lúc nào — gặp lỗi thì chuyển sang corsfix.' : '';
+        ? 'Free tier: không cần key, 60 req/phút, 10MB/tháng. Chỉ proxy domain public — không proxy được localhost/IP nội bộ.'
+        : S.proxy === 'custom'
+          ? 'Tự nhập template, {url} sẽ được encode. Không có proxy công khai nào khác còn sống.'
+          : 'Gọi thẳng — nếu provider không cho CORS, chuyển sang corsfix.';
     }
     saveState();
   };
   $('#proxyCustom').oninput = (e) => { S.proxyCustom = e.target.value; saveState(); };
-  $('#proxyKey').oninput = (e) => { S.proxyKey = e.target.value.trim(); saveState(); };
 
   $('#modelSearch').oninput = renderModels;
   $('#btn-use-manual').onclick = () => {

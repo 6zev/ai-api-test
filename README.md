@@ -39,22 +39,23 @@ Base URL chỉ cần gốc (`https://api.openai.com/v1`); dán kèm path endpoin
 
 ## CORS
 
-Trình duyệt chặn request cross-origin nếu server không trả header CORS. Mặc định tool để **Auto**: thử direct trước, nếu chết thì lần lượt thử từng proxy công khai và dừng ở cái đầu tiên trả về thật.
+Trình duyệt chặn request cross-origin nếu server không trả header CORS. Mặc định tool để **Auto**: thử direct trước, chặn thì chuyển sang corsfix.
 
-Proxy có sẵn trong panel 01 (thứ tự auto chain: direct → corsfix → corsproxy → allorigins → codetabs → corsis → corsworkers → thingproxy):
+Còn đúng **một** proxy free không cần key hoạt động được: **corsfix**. Mọi lựa chọn khác đã bị bỏ sau khi test thật từ browser:
 
-| Proxy | Dạng URL | Ghi chú |
+| Proxy | Kết quả test | Trạng thái |
 | --- | --- | --- |
-| **corsfix** | `https://proxy.corsfix.com/?sdk=1&url=<encoded>` | **free tier thật**: không cần đăng ký, 60 req/phút, 10MB/tháng (đăng ký domain → 100MB). Hỗ trợ mọi method + header + stream |
-| corsproxy.io | `https://corsproxy.io/?url=<encoded>` | free tier giờ **bắt buộc API key** (console.corsproxy.io) — dán vào ô "Proxy API key" |
-| allorigins.win | `https://api.allorigins.win/raw?url=<encoded>` | hay chết (500) |
-| api.codetabs.com | `https://api.codetabs.com/v1/proxy?quest=<encoded>` | |
-| cors.isomorphic-git.org | `<target>` | |
-| test.cors.workers.dev | `?<target>` | rate limit 429 thường xuyên |
-| thingproxy.freeboard.io | `/fetch/<target>` | |
-| Custom | template với `{url}` | `{url}` sẽ được encode |
+| **corsfix** `?sdk=1` | `200`, trả JSON + SSE, pass POST body & header | ✅ giữ |
+| corsproxy.io | `401` — free tier bắt buộc API key | ❌ bỏ |
+| allorigins.win | `200` với trang tĩnh nhưng `522` với API thật, chậm ~20s | ❌ bỏ |
+| api.codetabs.com | `522` / timeout, không trả CORS header | ❌ bỏ |
+| cors.isomorphic-git.org | `403`, không trả CORS header | ❌ bỏ |
+| test.cors.workers.dev | `429` rate limit, không trả CORS header | ❌ bỏ |
+| thingproxy.freeboard.io | DNS chết | ❌ bỏ |
 
-> `?sdk=1` là cờ free tier của Corsfix — không cần script SDK, không cần đăng ký domain khi chạy thử.
+Chế độ **Auto** = `direct → corsfix`. Nếu API đích bật CORS sẵn thì direct nhanh hơn và không tốn quota; chỉ khi bị chặn mới đi qua corsfix.
+
+> corsfix free tier: không cần key, 60 req/phút, 10MB/tháng (đăng ký domain ở app.corsfix.com → 100MB). Nó **chỉ proxy domain public** — target là `localhost`/IP nội bộ sẽ trả `invalid_url`.
 
 Anthropic có hỗ trợ chính thức cho browser qua header `anthropic-dangerous-direct-browser-access: true` (tool đã gắn sẵn).
 
